@@ -322,14 +322,14 @@ with tab2:
         st.markdown("---")
         
         # Proceso
-        col_info, col_btn = st.columns([2, 1])
+        col_info, col_btn = st.columns([1, 2])
         
         with col_info:
             st.markdown("""
-            <div class="info-box">
-            <strong>Al hacer clic se descargará y procesará:</strong><br>
-            1. Balanza de Comprobación → Cuentas CONTPAQi<br>
-            2. Pólizas XML + Grupos → Pólizas CONTPAQi
+            <div style="background:#eff6ff;border:1px solid #93c5fd;border-radius:8px;padding:10px;font-size:0.85rem;">
+            <strong>Se procesará:</strong><br>
+            Balanza → Cuentas<br>
+            XML + Grupos → Pólizas
             </div>
             """, unsafe_allow_html=True)
         
@@ -339,39 +339,80 @@ with tab2:
                 cid = st.session_state.company_id
                 df, dt = d_from.strftime("%Y-%m-%d"), d_to.strftime("%Y-%m-%d")
                 
-                progress = st.progress(0, "Iniciando...")
+                # Stepper container
+                stepper = st.container()
                 results = {}
+                steps = [
+                    ("📊", "Balanza", "pending"),
+                    ("📄", "Pólizas XML", "pending"),
+                    ("📋", "Grupos", "pending"),
+                    ("💰", "Cuentas", "pending"),
+                    ("📑", "Pólizas", "pending"),
+                ]
+                
+                def render_stepper(steps, current_step, error=None):
+                    html = '<div style="display:flex;gap:8px;align-items:center;padding:12px 0;">'
+                    for i, (icon, name, status) in enumerate(steps):
+                        if i < current_step:
+                            color, bg = "#10b981", "#d1fae5"  # Completado (verde)
+                            display_icon = "✓"
+                        elif i == current_step:
+                            if error:
+                                color, bg = "#ef4444", "#fee2e2"  # Error (rojo)
+                                display_icon = "✗"
+                            else:
+                                color, bg = "#6366f1", "#e0e7ff"  # En proceso (morado)
+                                display_icon = "⋯"
+                        else:
+                            color, bg = "#94a3b8", "#f1f5f9"  # Pendiente (gris)
+                            display_icon = icon
+                        html += f'''
+                            <div style="display:flex;flex-direction:column;align-items:center;flex:1;">
+                                <div style="width:32px;height:32px;border-radius:50%;background:{bg};color:{color};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;">{display_icon}</div>
+                                <span style="font-size:11px;color:{color};margin-top:4px;">{name}</span>
+                            </div>
+                        '''
+                        if i < len(steps) - 1:
+                            line_color = "#10b981" if i < current_step else "#e2e8f0"
+                            html += f'<div style="flex:0.5;height:2px;background:{line_color};"></div>'
+                    html += '</div>'
+                    return html
                 
                 try:
-                    progress.progress(15, "📊 Descargando Balanza...")
-                    balanza = odoo.export_trial_balance(cid, df, dt)
-                    results['balanza_original'] = balanza
-                    st.success(f"✅ Balanza: {len(balanza):,} bytes")
-                    
-                    progress.progress(35, "📄 Descargando Pólizas XML...")
-                    xml = odoo.export_xml_polizas(cid, df, dt)
-                    results['xml_original'] = xml
-                    st.success(f"✅ Pólizas XML: {len(xml):,} bytes")
-                    
-                    progress.progress(55, "📋 Descargando Grupos...")
-                    grupos = groups_to_csv(odoo.get_account_groups(cid))
-                    results['grupos_original'] = grupos
-                    st.success(f"✅ Grupos descargados")
-                    
-                    progress.progress(75, "💰 Procesando cuentas...")
-                    results['cuentas'] = process_accounts(balanza)
-                    st.success("✅ Cuentas procesadas")
-                    
-                    progress.progress(90, "📄 Procesando pólizas...")
-                    results['polizas'] = process_policies(xml, grupos)
-                    st.success("✅ Pólizas procesadas")
-                    
-                    progress.progress(100, "✅ Completado")
-                    st.session_state.results = results
-                    st.session_state.show_success = True
+                    with stepper:
+                        placeholder = st.empty()
+                        
+                        # Paso 1: Balanza
+                        placeholder.markdown(render_stepper(steps, 0), unsafe_allow_html=True)
+                        balanza = odoo.export_trial_balance(cid, df, dt)
+                        results['balanza_original'] = balanza
+                        
+                        # Paso 2: Pólizas XML
+                        placeholder.markdown(render_stepper(steps, 1), unsafe_allow_html=True)
+                        xml = odoo.export_xml_polizas(cid, df, dt)
+                        results['xml_original'] = xml
+                        
+                        # Paso 3: Grupos
+                        placeholder.markdown(render_stepper(steps, 2), unsafe_allow_html=True)
+                        grupos = groups_to_csv(odoo.get_account_groups(cid))
+                        results['grupos_original'] = grupos
+                        
+                        # Paso 4: Procesar Cuentas
+                        placeholder.markdown(render_stepper(steps, 3), unsafe_allow_html=True)
+                        results['cuentas'] = process_accounts(balanza)
+                        
+                        # Paso 5: Procesar Pólizas
+                        placeholder.markdown(render_stepper(steps, 4), unsafe_allow_html=True)
+                        results['polizas'] = process_policies(xml, grupos)
+                        
+                        # Completado
+                        placeholder.markdown(render_stepper(steps, 5), unsafe_allow_html=True)
+                        st.session_state.results = results
+                        st.session_state.show_success = True
                     
                 except Exception as e:
-                    st.error(f"❌ Error: {e}")
+                    placeholder.markdown(render_stepper(steps, steps.index(next((s for s in steps if s[2] == "pending"), steps[0])), error=True), unsafe_allow_html=True)
+                    st.error(f"❌ {e}")
         
         # Resultados
         if st.session_state.results:
