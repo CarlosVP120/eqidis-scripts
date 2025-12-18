@@ -103,15 +103,15 @@ class OdooConnector:
         return result.get('result')
     
     def get_companies(self) -> list:
-        return self._call('res.company', 'search_read', [[]], {'fields': ['id', 'name', 'vat']})
+        return self._call('res.company', 'search_read', [[]], {'fields': ['id', 'name', 'vat'], 'context': {'lang': 'es_MX'}})
     
     def get_account_groups(self, company_id: int) -> list:
         return self._call('account.group', 'search_read', [[]], 
-            {'fields': ['name', 'code_prefix_start', 'code_prefix_end'], 'context': {'allowed_company_ids': [company_id]}})
+            {'fields': ['name', 'code_prefix_start', 'code_prefix_end'], 'context': {'allowed_company_ids': [company_id], 'lang': 'es_MX'}})
     
     def export_trial_balance(self, company_id: int, date_from: str, date_to: str) -> bytes:
         """Exportar Balanza de Comprobación XLSX"""
-        options = self._call('account.report', 'get_options', [[12], {}], {'context': {'allowed_company_ids': [company_id]}})
+        options = self._call('account.report', 'get_options', [[12], {}], {'context': {'allowed_company_ids': [company_id], 'lang': 'es_MX'}})
         options.update({'date': {"mode": "range", "date_from": date_from, "date_to": date_to}, 'unfold_all': True, 'hierarchy': True})
         response = self.session.post(f"{self.url}/account_reports", data={"options": json.dumps(options), "file_generator": "export_to_xlsx"})
         if response.status_code != 200 or response.content[:4] != b'PK\x03\x04':
@@ -120,9 +120,9 @@ class OdooConnector:
     
     def export_xml_polizas(self, company_id: int, date_from: str, date_to: str) -> bytes:
         """Exportar Pólizas XML desde Libro Mayor"""
-        options = self._call('account.report', 'get_options', [[10], {}], {'context': {'allowed_company_ids': [company_id]}})
+        options = self._call('account.report', 'get_options', [[10], {}], {'context': {'allowed_company_ids': [company_id], 'lang': 'es_MX'}})
         options['date'] = {"mode": "range", "date_from": date_from, "date_to": date_to}
-        ctx = {"allowed_company_ids": [company_id], "l10n_mx_xml_polizas_generation_options": options}
+        ctx = {"allowed_company_ids": [company_id], "lang": "es_MX", "l10n_mx_xml_polizas_generation_options": options}
         wizard_id = self._call('l10n_mx_xml_polizas.xml_polizas_wizard', 'create', [{"export_type": "AF"}], {'context': ctx})
         result = self._call('l10n_mx_xml_polizas.xml_polizas_wizard', 'export_xml', [[wizard_id]], {'context': ctx})
         if not result or not result.get('url'):
@@ -136,7 +136,8 @@ class OdooConnector:
 def groups_to_csv(groups: list) -> str:
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(['code_prefix_start', 'code_prefix_end', 'name'])
+    # Usar nombres de columna en español que espera el script xml_to_contpaqi_xls_v2.py
+    writer.writerow(['Inicio de prefijo de código', 'Fin de prefijo de código', 'Nombre'])
     for g in groups:
         writer.writerow([g['code_prefix_start'], g['code_prefix_end'], g['name']])
     return output.getvalue()
